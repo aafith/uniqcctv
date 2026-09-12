@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Uniq CCTV — Smart Security & Surveillance Solutions
+
+A high-performance, Apple-style product landing page featuring a scroll-driven frame animation for **Uniq CCTV** (Sainthamaruthu, Sri Lanka).
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router with Turbopack)
+- **Library**: React 19
+- **Styling**: Tailwind CSS v4.3.3
+- **Animations & Scroll**: Framer Motion (useScroll, useTransform, useMotionValueEvent)
+- **Icons**: Lucide React & React Icons
+- **Language**: TypeScript 5
+
+---
+
+## Features
+
+- **Apple-Style Scroll Animation**: 102 progressive 4K CCTV camera frames rendered on a high-DPI Retina canvas buffer with RAF throttling.
+- **Instant First Paint**: Frame 1 streams with immediate priority to eliminate cold-start loading delays.
+- **In-Page Navigation**: Smooth scroll targets (`#top`, `#gallery`, `#services`, `#upgrade`, `#contact`) allowing natural exploration.
+- **Direct WhatsApp Funnels**: Pre-filled consultation and quote links connected to the company hotline.
+- **Responsive Navigation & Footer**: Clean white frosted sticky header with accessible mobile drawer, plus an executive business footer.
+- **Tailwind CSS v4 Only**: Zero legacy CSS files; 100% utility-first styling.
+
+---
+
+## Project Structure
+
+```
+uniqcctv/
+├── app/
+│   ├── globals.css      # Tailwind v4 entry point & theme variables
+│   ├── layout.tsx       # Root layout with fonts & SEO metadata
+│   └── page.tsx         # Main landing page
+├── components/
+│   ├── home/
+│   │   └── Hero.tsx     # Scroll-driven camera showcase & hero sections
+│   └── layouts/
+│       ├── Header.tsx   # Sticky frosted header & mobile navigation
+│       └── Footer.tsx   # Business info, hours, solutions & WhatsApp CTA
+├── lib/
+│   └── constants.ts     # Site info, nav links, and WhatsApp deep links
+└── public/
+    ├── frames/          # 102 WebP animation frames
+    └── logo.webp        # Brand logo
+```
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Production Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm run start
+```
 
-## Learn More
+### Code Quality / Linting
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run lint
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Business Configuration
 
-## Deploy on Vercel
+Update business contact details, hours, and phone numbers in [`lib/constants.ts`](./lib/constants.ts):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```typescript
+export const SITE_CONFIG = {
+  name: "Uniq CCTV",
+  phone: "+94 77 123 4567",
+  whatsappNumber: "94771234567",
+  location: "Main Street, Sainthamaruthu, Sri Lanka",
+  hours: "Mon – Sat: 8:30 AM – 7:00 PM",
+};
+```

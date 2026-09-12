@@ -1,380 +1,284 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import "./Hero.css";
-import { motion, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
+import { useScroll, useTransform, useMotionValueEvent } from "framer-motion";
 import { Shield, Eye, Wifi, Smartphone, ChevronDown } from "lucide-react";
+import { WHATSAPP_LINKS } from "@/lib/constants";
 
-/* ─────────────────────────────────────────────────────────────
-   FRAME CONFIGURATION
-   Replace these paths with your actual frame image paths.
-   Images should be sequential frames (frame- (1).webp, frame- (2).webp, etc.)
-   ───────────────────────────────────────────────────────────── */
 const TOTAL_FRAMES = 102;
 
-/**
- * Generate the path for a given frame index.
- * Matches naming: frame- (1).webp, frame- (2).webp, ... frame- (102).webp
- */
 function getFramePath(index: number): string {
   return `/frames/frame- (${index + 1}).webp`;
 }
 
-/* ─── Feature cards data ──────────────────────────────────── */
 const FEATURES = [
-  {
-    icon: Shield,
-    title: "24/7 Protection",
-    description: "Round-the-clock surveillance with intelligent alerts",
-  },
-  {
-    icon: Eye,
-    title: "4K Ultra HD",
-    description: "Crystal clear footage, day and night vision",
-  },
-  {
-    icon: Wifi,
-    title: "Smart Connect",
-    description: "Seamless wireless setup with cloud storage",
-  },
-  {
-    icon: Smartphone,
-    title: "Remote Access",
-    description: "Monitor your property from anywhere in the world",
-  },
+  { icon: Shield, label: "24/7 Protection" },
+  { icon: Eye, label: "4K Ultra HD" },
+  { icon: Wifi, label: "Smart Connect" },
+  { icon: Smartphone, label: "Remote Access" },
 ];
 
-/* ═══════════════════════════════════════════════════════════════
-   HERO COMPONENT
-   ═══════════════════════════════════════════════════════════════ */
+const BTN_PRIMARY =
+  "inline-flex items-center justify-center rounded-full bg-primary px-8 py-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:bg-red-700 hover:scale-[1.02] active:scale-95 focus-visible:outline-2 focus-visible:outline-white";
+
+const BTN_OUTLINE =
+  "inline-flex items-center justify-center rounded-full border border-white/30 bg-transparent px-8 py-3 text-sm font-semibold text-white transition-all duration-200 hover:border-white/60 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-white";
+
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const imgRatio = img.width / img.height;
+  const canvasRatio = width / height;
+  let dw = width;
+  let dh = height;
+  let dx = 0;
+  let dy = 0;
+
+  if (imgRatio > canvasRatio) {
+    dw = height * imgRatio;
+    dx = (width - dw) / 2;
+  } else {
+    dh = width / imgRatio;
+    dy = (height - dh) / 2;
+  }
+
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
+function HeroSection({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`absolute inset-0 z-10 flex items-center justify-center pt-17 sm:pt-19 transition-all duration-700 ease-out ${
+        active
+          ? "opacity-100 visible pointer-events-auto translate-y-0"
+          : "opacity-0 invisible pointer-events-none translate-y-6"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function Hero() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imagesRef = useRef<HTMLImageElement[]>([]);
-  const [imagesLoaded, setImagesLoaded] = useState(false);
-  const [usePlaceholder, setUsePlaceholder] = useState(false);
+  const imagesRef = useRef<(HTMLImageElement | undefined)[]>([]);
+  const lastImgRef = useRef<HTMLImageElement | null>(null);
   const currentFrameRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
 
-  /* ─── Scroll tracking ──────────────────────────────────── */
+  // Active section: 0=gap, 1=headline, 2=tagline, 3=features, 4=cta
+  const [activeSection, setActiveSection] = useState(1);
+
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
   });
 
-  // Map scroll progress to frame index
   const frameIndex = useTransform(scrollYProgress, [0, 1], [0, TOTAL_FRAMES - 1]);
 
-  // Content opacity transforms for staggered reveals
-  const headlineOpacity = useTransform(scrollYProgress, [0, 0.08], [1, 1]);
-  const headlineY = useTransform(scrollYProgress, [0, 0.15], [0, -60]);
-  const headlineScale = useTransform(scrollYProgress, [0, 0.2], [1, 0.92]);
+  // Update active section based on scroll progress
+  useMotionValueEvent(scrollYProgress, "change", (progress) => {
+    let next = 0;
+    if (progress < 0.25) next = 1;
+    else if (progress >= 0.30 && progress < 0.53) next = 2;
+    else if (progress >= 0.58 && progress < 0.78) next = 3;
+    else if (progress >= 0.83) next = 4;
 
-  // Feature cards fade in as you scroll deeper
-  const featuresOpacity = useTransform(scrollYProgress, [0.25, 0.4], [0, 1]);
-  const featuresY = useTransform(scrollYProgress, [0.25, 0.4], [80, 0]);
+    setActiveSection((prev) => (prev !== next ? next : prev));
+  });
 
-  // Bottom CTA
-  const ctaOpacity = useTransform(scrollYProgress, [0.6, 0.75], [0, 1]);
-  const ctaY = useTransform(scrollYProgress, [0.6, 0.75], [40, 0]);
+  /* ─── Render Canvas Frame ─────────────────────────────── */
+  const renderFrame = useCallback((index: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  // Scroll indicator fades out
-  const scrollIndicatorOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0]);
+    const img = imagesRef.current[index] ?? lastImgRef.current;
+    if (!img) return;
+    lastImgRef.current = img;
 
-  /* ─── Preload images / fallback to placeholder ─────────── */
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    drawCover(ctx, img, canvas.width, canvas.height);
+  }, []);
+
+  /* ─── Progressive Frame Preload ────────────────────────── */
   useEffect(() => {
     let cancelled = false;
-    const images: HTMLImageElement[] = [];
-    let loaded = 0;
-    let failed = 0;
 
-    for (let i = 0; i < TOTAL_FRAMES; i++) {
+    // Load initial frame with top priority
+    const firstImg = new Image();
+    firstImg.src = getFramePath(0);
+    firstImg.onload = () => {
+      if (cancelled) return;
+      imagesRef.current[0] = firstImg;
+      renderFrame(0);
+    };
+
+    // Preload remaining frames in background
+    for (let i = 1; i < TOTAL_FRAMES; i++) {
       const img = new Image();
       img.src = getFramePath(i);
-
       img.onload = () => {
-        if (cancelled) return;
-        loaded++;
-        images[i] = img;
-        if (loaded + failed === TOTAL_FRAMES) {
-          if (failed > TOTAL_FRAMES * 0.5) {
-            // More than half failed — use placeholder gradient
-            setUsePlaceholder(true);
-          }
-          imagesRef.current = images;
-          setImagesLoaded(true);
-        }
-      };
-
-      img.onerror = () => {
-        if (cancelled) return;
-        failed++;
-        if (loaded + failed === TOTAL_FRAMES) {
-          if (failed > TOTAL_FRAMES * 0.5) {
-            setUsePlaceholder(true);
-          }
-          imagesRef.current = images;
-          setImagesLoaded(true);
-        }
+        if (!cancelled) imagesRef.current[i] = img;
       };
     }
 
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  /* ─── Draw current frame on canvas ────────────────────── */
-  const renderFrame = useCallback(
-    (index: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      if (usePlaceholder) {
-        // Draw animated gradient placeholder
-        const hue1 = (index / TOTAL_FRAMES) * 60 + 200; // blue to purple range
-        const hue2 = hue1 + 40;
-        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        gradient.addColorStop(0, `hsl(${hue1}, 35%, 8%)`);
-        gradient.addColorStop(0.5, `hsl(${(hue1 + hue2) / 2}, 30%, 12%)`);
-        gradient.addColorStop(1, `hsl(${hue2}, 40%, 6%)`);
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Draw subtle grid pattern
-        ctx.strokeStyle = `rgba(255, 255, 255, 0.03)`;
-        ctx.lineWidth = 1;
-        const gridSize = 60;
-        const offsetX = (index * 2) % gridSize;
-        const offsetY = (index * 1.5) % gridSize;
-        for (let x = -gridSize + offsetX; x < canvas.width + gridSize; x += gridSize) {
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, canvas.height);
-          ctx.stroke();
-        }
-        for (let y = -gridSize + offsetY; y < canvas.height + gridSize; y += gridSize) {
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          ctx.lineTo(canvas.width, y);
-          ctx.stroke();
-        }
-
-        // Draw radial glow
-        const glowX = canvas.width * (0.3 + 0.4 * (index / TOTAL_FRAMES));
-        const glowY = canvas.height * 0.4;
-        const glowGrad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, canvas.width * 0.5);
-        glowGrad.addColorStop(0, `hsla(${hue1 + 20}, 60%, 30%, 0.15)`);
-        glowGrad.addColorStop(1, `hsla(${hue1 + 20}, 60%, 30%, 0)`);
-        ctx.fillStyle = glowGrad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        return;
-      }
-
-      const img = imagesRef.current[index];
-      if (!img) return;
-
-      // Cover-fit the image
-      const imgRatio = img.width / img.height;
-      const canvasRatio = canvas.width / canvas.height;
-      let drawW: number, drawH: number, drawX: number, drawY: number;
-
-      if (imgRatio > canvasRatio) {
-        drawH = canvas.height;
-        drawW = drawH * imgRatio;
-        drawX = (canvas.width - drawW) / 2;
-        drawY = 0;
-      } else {
-        drawW = canvas.width;
-        drawH = drawW / imgRatio;
-        drawX = 0;
-        drawY = (canvas.height - drawH) / 2;
-      }
-
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
-    },
-    [usePlaceholder]
-  );
-
-  /* ─── Resize canvas to match viewport ─────────────────── */
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const handleResize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      const ctx = canvas.getContext("2d");
-      if (ctx) ctx.scale(dpr, dpr);
-      // Adjust canvas dimensions for drawing (use CSS dimensions)
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      renderFrame(currentFrameRef.current);
-    };
-
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
   }, [renderFrame]);
 
-  /* ─── Update frame on scroll ──────────────────────────── */
+  /* ─── HiDPI Resize Handler ─────────────────────────────── */
+  const resize = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(window.innerWidth * dpr);
+    canvas.height = Math.round(window.innerHeight * dpr);
+    renderFrame(currentFrameRef.current);
+  }, [renderFrame]);
+
+  useEffect(() => {
+    resize();
+    window.addEventListener("resize", resize, { passive: true });
+    return () => window.removeEventListener("resize", resize);
+  }, [resize]);
+
+  /* ─── Scroll to Frame (RAF Throttled) ──────────────────── */
   useMotionValueEvent(frameIndex, "change", (latest) => {
-    const index = Math.min(Math.round(latest), TOTAL_FRAMES - 1);
-    if (index !== currentFrameRef.current) {
-      currentFrameRef.current = index;
-      renderFrame(index);
+    const idx = Math.min(Math.round(latest), TOTAL_FRAMES - 1);
+    if (idx !== currentFrameRef.current) {
+      currentFrameRef.current = idx;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => renderFrame(idx));
     }
   });
 
-  // Initial render
   useEffect(() => {
-    if (imagesLoaded || usePlaceholder) {
-      renderFrame(0);
-    }
-  }, [imagesLoaded, usePlaceholder, renderFrame]);
-
-  // Draw placeholder immediately
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!imagesLoaded) {
-        setUsePlaceholder(true);
-        setImagesLoaded(true);
-      }
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [imagesLoaded]);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   return (
-    <>
-      {/* Scroll container — tall enough for the scroll-driven animation */}
-      <div ref={containerRef} className="hero-scroll-container">
-        {/* Sticky viewport — pinned while scrolling through the container */}
-        <div className="hero-sticky">
-          {/* Canvas for frame sequence */}
-          <canvas
-            ref={canvasRef}
-            className="hero-canvas"
-            aria-hidden="true"
-          />
+    <div ref={containerRef} className="relative z-1 h-[500vh] -mt-17 sm:-mt-19">
+      {/* Scroll navigation targets */}
+      <div id="top" className="absolute left-0 top-0 h-px w-px pointer-events-none invisible" />
+      <div id="gallery" className="absolute left-0 top-[34%] h-px w-px pointer-events-none invisible" />
+      <div id="services" className="absolute left-0 top-[66%] h-px w-px pointer-events-none invisible" />
+      <div id="upgrade" className="absolute left-0 top-[88%] h-px w-px pointer-events-none invisible" />
 
-          {/* Dark overlay for text readability */}
-          <div className="hero-overlay" />
+      <div className="sticky top-0 h-screen w-full overflow-hidden">
+        <canvas ref={canvasRef} className="absolute inset-0 z-0 h-full w-full" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-0 z-1 bg-gradient-to-b from-black/40 via-black/50 to-black/60" />
 
-          {/* ─── Headline section (glassmorphism) ─────────── */}
-          <motion.div
-            className="hero-content"
-            style={{
-              opacity: headlineOpacity,
-              y: headlineY,
-              scale: headlineScale,
-            }}
-          >
-            <div className="hero-glass-card hero-glass-card--headline">
-              <motion.span
-                className="hero-badge"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.6 }}
-              >
-                <span className="hero-badge__dot" />
-                Sainthamaruthu&apos;s Trusted CCTV Partner
-              </motion.span>
-
-              <motion.h1
-                className="hero-title"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.7 }}
-              >
-                See Everything.
-                <br />
-                <span className="hero-title--accent">Secure Everything.</span>
-              </motion.h1>
-
-              <motion.p
-                className="hero-subtitle"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7, duration: 0.6 }}
-              >
-                Professional CCTV installation, smart surveillance solutions,
-                and 24/7 monitoring for your home and business.
-              </motion.p>
-
-              <motion.div
-                className="hero-cta-group"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.9, duration: 0.6 }}
-              >
-                <a href="#contact" className="hero-btn hero-btn--primary">
-                  Get a Free Quote
-                </a>
-                <a href="#services" className="hero-btn hero-btn--glass">
-                  Our Services
-                </a>
-              </motion.div>
+        {/* ── Section 1: Headline ───────────────────────── */}
+        <HeroSection active={activeSection === 1}>
+          <div className="max-w-200 px-6 text-center">
+            <div className="mb-7 inline-flex items-center gap-2 font-mono text-xs font-medium tracking-widest text-white/70 uppercase">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-sm shadow-red-500 animate-pulse" />
+              Uniq CCTV
             </div>
-          </motion.div>
 
-          {/* ─── Feature cards (glassmorphism, appear on scroll) ── */}
-          <motion.div
-            className="hero-features"
-            style={{ opacity: featuresOpacity, y: featuresY }}
-          >
-            <div className="hero-features__grid">
-              {FEATURES.map((feature, i) => (
-                <motion.div
-                  key={feature.title}
-                  className="hero-feature-card"
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{
-                    delay: i * 0.1,
-                    duration: 0.5,
-                    ease: "easeOut",
-                  }}
-                >
-                  <div className="hero-feature-card__icon">
-                    <feature.icon size={22} strokeWidth={1.8} />
-                  </div>
-                  <h3 className="hero-feature-card__title">{feature.title}</h3>
-                  <p className="hero-feature-card__desc">{feature.description}</p>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
+            <h1 className="font-space mb-6 text-4xl sm:text-6xl md:text-7xl font-bold leading-none tracking-tight text-white">
+              See Everything.
+              <br />
+              <span className="bg-gradient-to-br from-red-500 via-red-400 to-rose-300 bg-clip-text text-transparent">
+                Secure Everything.
+              </span>
+            </h1>
 
-          {/* ─── Bottom CTA (appears near end) ───────────── */}
-          <motion.div
-            className="hero-bottom-cta"
-            style={{ opacity: ctaOpacity, y: ctaY }}
-          >
-            <div className="hero-glass-card hero-glass-card--bottom">
-              <p className="hero-bottom-cta__text">
-                Ready to upgrade your security?
-              </p>
-              <a href="#contact" className="hero-btn hero-btn--primary hero-btn--lg">
-                Talk to an Expert
+            <p className="text-xs font-medium tracking-widest text-white/60 uppercase">
+              Scroll to explore
+            </p>
+          </div>
+        </HeroSection>
+
+        {/* ── Section 2: Tagline & CTAs ─────────────────── */}
+        <HeroSection active={activeSection === 2}>
+          <div className="max-w-145 px-6 text-center">
+            <p className="font-space mb-9 text-lg sm:text-xl md:text-2xl font-medium leading-relaxed text-white/90">
+              Professional CCTV installation &amp; smart surveillance
+              <br />
+              for homes and businesses in Sainthamaruthu.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <a
+                href={WHATSAPP_LINKS.quote}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={BTN_PRIMARY}
+              >
+                Get a Free Quote
+              </a>
+              <a href="#services" className={BTN_OUTLINE}>
+                Our Services
               </a>
             </div>
-          </motion.div>
+          </div>
+        </HeroSection>
 
-          {/* ─── Scroll indicator ────────────────────────── */}
-          <motion.div
-            className="hero-scroll-indicator"
-            style={{ opacity: scrollIndicatorOpacity }}
-          >
-            <span className="hero-scroll-indicator__text">Scroll to explore</span>
-            <ChevronDown size={18} className="hero-scroll-indicator__icon" />
-          </motion.div>
-        </div>
+        {/* ── Section 3: Feature Strip ──────────────────── */}
+        <HeroSection active={activeSection === 3}>
+          <div className="w-full max-w-3xl px-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-2xl overflow-hidden bg-white/10 shadow-2xl">
+              {FEATURES.map((feature) => (
+                <div
+                  key={feature.label}
+                  className="group flex flex-col items-center gap-3 p-5 sm:p-6 bg-black/40 backdrop-blur-md transition-colors hover:bg-black/20"
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-red-400 transition-transform group-hover:scale-110 group-hover:bg-primary/20">
+                    <feature.icon size={20} />
+                  </div>
+                  <span className="font-space text-xs sm:text-sm font-semibold text-white/80 text-center">
+                    {feature.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </HeroSection>
+
+        {/* ── Section 4: Final CTA ──────────────────────── */}
+        <HeroSection active={activeSection === 4}>
+          <div className="px-6 text-center">
+            <h2 className="font-space mb-7 text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-white">
+              Ready to upgrade your security?
+            </h2>
+            <a
+              href={WHATSAPP_LINKS.consultation}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${BTN_PRIMARY} px-10 py-3.5 text-base`}
+            >
+              Talk to an Expert
+            </a>
+          </div>
+        </HeroSection>
+
+        {/* ── Scroll Hint ───────────────────────────────── */}
+        <a
+          href="#gallery"
+          aria-label="Scroll to explore features"
+          className={`absolute bottom-10 left-1/2 -translate-x-1/2 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full text-white/60 transition-all hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white ${
+            activeSection === 1 ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          <ChevronDown size={20} className="animate-bounce" />
+        </a>
       </div>
-    </>
+    </div>
   );
 }

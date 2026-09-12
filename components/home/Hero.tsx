@@ -8,18 +8,16 @@ import { Shield, Eye, Wifi, Smartphone, ChevronDown } from "lucide-react";
 /* ─────────────────────────────────────────────────────────────
    FRAME CONFIGURATION
    Replace these paths with your actual frame image paths.
-   Images should be sequential frames (frame-001.webp, frame-002.webp, etc.)
+   Images should be sequential frames (frame- (1).webp, frame- (2).webp, etc.)
    ───────────────────────────────────────────────────────────── */
-const TOTAL_FRAMES = 60;
+const TOTAL_FRAMES = 102;
 
 /**
  * Generate the path for a given frame index.
- * Replace this function body when you have real images.
+ * Matches naming: frame- (1).webp, frame- (2).webp, ... frame- (102).webp
  */
 function getFramePath(index: number): string {
-  // Placeholder: returns a path like /frames/frame-001.webp
-  const padded = String(index + 1).padStart(3, "0");
-  return `/frames/frame-${padded}.webp`;
+  return `/frames/frame- (${index + 1}).webp`;
 }
 
 /* ─── Feature cards data ──────────────────────────────────── */
